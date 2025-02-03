@@ -1,11 +1,10 @@
 import { getCurrentSession } from "@/actions/actions";
-import Hero from "@/components/hero";
 import { redirect } from "next/navigation";
 
-export default async function Home() {
+export default async function Dashboard() {
   const { user } = await getCurrentSession();
-  if (user) {
-    redirect("/dashboard");
+  if (!user) {
+    redirect("/sign-in");
   }
-  return <Hero />;
+  return <h1>Protected Dashboard</h1>;
 }

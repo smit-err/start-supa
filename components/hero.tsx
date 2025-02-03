@@ -6,7 +6,7 @@ import { IconSlash } from "@tabler/icons-react";
 
 export default function Hero() {
   return (
-    <main className="min-h-screen flex items-center flex-col max-w-screen-xl mx-auto">
+    <main className="flex items-center flex-col max-w-screen-xl mx-auto">
       <div className="text-center pt-32 pb-40 space-y-20">
         <h1 className="text-6xl tracking-tight font-semibold">
           Supabase auth starter for

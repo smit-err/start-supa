@@ -1,26 +1,33 @@
 "use client";
 
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form } from "@/components/ui/form";
 import { SignUpFormSchema } from "@/zod/schema";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { getCurrentSession, signup } from "@/actions/actions";
+import CustomFormField from "@/components/custom-form-field";
+import PasswordField from "@/components/password-field";
 import { useToast } from "@/hooks/use-toast";
-import { IconArrowLeft, IconCircleCheckFilled } from "@tabler/icons-react";
-import { useState } from "react";
+import { IconLoader2 } from "@tabler/icons-react";
+import { redirect } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function SignUp() {
+  useEffect(() => {
+    async function getUser() {
+      const { user } = await getCurrentSession();
+      if (user) {
+        redirect("/dashboard");
+      }
+    }
+
+    getUser();
+  }, []);
+
   return (
     <section className="max-w-screen-xl mx-auto pt-20">
       <div className="max-w-96 mx-auto">
@@ -37,85 +44,126 @@ export default function SignUp() {
 }
 
 function SignUpForm() {
-  const [success, setSuccess] = useState(false);
+  const [showMsg, setShowMsg] = useState(false); // shows msg list when clicked on password input
+  const [isVisible, setIsVisible] = useState(false); // password visible toggle
+  const [loading, setLoading] = useState(false); // set loading when submitting
   const { toast } = useToast();
   const form = useForm<z.infer<typeof SignUpFormSchema>>({
     resolver: zodResolver(SignUpFormSchema),
+    mode: "onBlur",
     defaultValues: {
       email: "",
       password: "",
     },
   });
 
-  function onSubmit(values: z.infer<typeof SignUpFormSchema>) {
-    toast({
-      title: "Account creation successful",
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-neutral-900 p-4">
-          <code className="text-white">{JSON.stringify(values, null, 2)}</code>
-        </pre>
-      ),
-    });
-    setSuccess(true);
+  const password = form.watch("password", "");
+
+  async function onSubmit(values: z.infer<typeof SignUpFormSchema>) {
+    try {
+      setLoading(true);
+      const response = await signup(values);
+      if (response?.zod_errors || response?.error) {
+        form.clearErrors();
+
+        // Handle Zod validation errors
+        if (response.zod_errors) {
+          const fieldErrors = response.zod_errors;
+          Object.keys(fieldErrors).forEach((field) => {
+            const errorMessages =
+              fieldErrors[field as keyof typeof fieldErrors];
+            if (Array.isArray(errorMessages) && errorMessages?.length > 0) {
+              form.setError(
+                field as "email" | "password" | "root" | `root.${string}`,
+                { message: errorMessages[0] }
+              );
+            }
+          });
+        }
+
+        // Handle Supabase errors
+        if (response.error) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: response.error,
+          });
+        }
+      }
+
+      if (response?.success_message) {
+        // setSuccess(true);
+        toast({
+          title: "Account creation successfull",
+          description: response.success_message,
+        });
+      }
+    } catch (error) {
+      setLoading(false);
+      console.error("Signup failed: ", error);
+    } finally {
+      setLoading(false);
+    }
   }
-  return (
-    <>
-      {!success ? (
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-10">
-            <div className="space-y-5">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input placeholder="smit@gmail.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
 
-                    <FormControl>
-                      <Input placeholder="Enter your password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+  const uppercaseRegex = /[A-Z]/;
+  const lowercaseRegex = /[a-z]/;
+  const numberRegex = /\d/;
+  const specialCharRegex = /[@$!%*?&]/;
+  const minLengthRegex = /^.{8,}$/;
+
+  const hasUppercase = uppercaseRegex.test(password);
+  const hasLowercase = lowercaseRegex.test(password);
+  const hasNumber = numberRegex.test(password);
+  const hasSpecialChar = specialCharRegex.test(password);
+  const hasMinLength = minLengthRegex.test(password);
+
+  const errorMsg = {
+    upper: "Uppercase letter",
+    lower: "Lowercase letter",
+    number: "Number",
+    special: "Special character (e.g. !?<>@#$%)",
+    count: "8 characters or more",
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-10">
+        <div className="space-y-5">
+          <CustomFormField
+            control={form.control}
+            name="email"
+            label="Email"
+            placeholder="smit@gmail.com"
+          />
+
+          <PasswordField
+            control={form.control}
+            name="password"
+            placeholder="Enter your password"
+            label="Password"
+            errorMsg={errorMsg}
+            hasUpper={hasUppercase}
+            hasLower={hasLowercase}
+            hasCount={hasMinLength}
+            hasSpecial={hasSpecialChar}
+            hasNumber={hasNumber}
+            showMsg={showMsg}
+            setShowMsg={setShowMsg}
+            togglePasswordVisibility={isVisible}
+            setTogglePasswordVisibility={setIsVisible}
+          />
+        </div>
+
+        <Button type="submit" className="w-full py-2 h-auto" disabled={loading}>
+          {loading && (
+            <div className="[&_svg]:animate-spin">
+              <IconLoader2 />
             </div>
-
-            <Button className="w-full py-2 h-auto">Sign up</Button>
-          </form>
-        </Form>
-      ) : (
-        <SuccessScreen setSuccess={setSuccess} />
-      )}
-    </>
-  );
-}
-
-function SuccessScreen({ setSuccess }: { setSuccess: (s: boolean) => void }) {
-  return (
-    <div className="space-y-4">
-      <span
-        className="text-muted-foreground text-sm flex items-center gap-2 cursor-pointer"
-        onClick={() => setSuccess(false)}
-      >
-        <IconArrowLeft size={18} />
-        Back
-      </span>
-      <IconCircleCheckFilled size={56} />
-      <h2>Please check your email</h2>
-      <Button className="w-full">Open Gmail</Button>
-    </div>
+          )}
+          Sign up
+        </Button>
+      </form>
+    </Form>
   );
 }

@@ -1,25 +1,33 @@
 "use client";
 
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form } from "@/components/ui/form";
 import { SignUpFormSchema } from "@/zod/schema";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
-import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { getCurrentSession, signin } from "@/actions/actions";
 import { useToast } from "@/hooks/use-toast";
+import { IconLoader2 } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
+
+import CustomFormField from "@/components/custom-form-field";
+import PasswordField from "@/components/password-field";
+import { redirect, useRouter } from "next/navigation";
 
 export default function SignIn() {
+  useEffect(() => {
+    async function getUser() {
+      const { user } = await getCurrentSession();
+      if (user) {
+        redirect("/dashboard");
+      }
+    }
+    getUser();
+  }, []);
+
   return (
     <section className="max-w-screen-xl mx-auto pt-20">
       <div className="max-w-96 mx-auto">
@@ -36,63 +44,95 @@ export default function SignIn() {
 }
 
 function SignInForm() {
+  const router = useRouter();
+
+  const [loading, setLoading] = useState(false);
+  const [visible, setVisible] = useState(false);
   const { toast } = useToast();
   const form = useForm<z.infer<typeof SignUpFormSchema>>({
     resolver: zodResolver(SignUpFormSchema),
+    mode: "onBlur",
     defaultValues: {
       email: "",
       password: "",
     },
   });
 
-  function onSubmit(values: z.infer<typeof SignUpFormSchema>) {
-    toast({
-      title: "Sign in successful",
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-neutral-900 p-4">
-          <code className="text-white">{JSON.stringify(values, null, 2)}</code>
-        </pre>
-      ),
-    });
+  async function onSubmit(values: z.infer<typeof SignUpFormSchema>) {
+    try {
+      setLoading(true);
+      const response = await signin(values);
+
+      if (response?.zod_errors) {
+        const fieldErrors = response.zod_errors;
+
+        form.clearErrors();
+
+        Object.keys(fieldErrors).forEach((field) => {
+          const errorMessages = fieldErrors[field as keyof typeof fieldErrors];
+          if (Array.isArray(errorMessages) && errorMessages?.length > 0) {
+            form.setError(
+              field as "email" | "password" | "root" | `root.${string}`,
+              { message: errorMessages[0] }
+            ); // Set the first error
+          }
+        });
+      }
+
+      if (response.error) {
+        form.setError("email", {
+          message: response.error,
+        });
+        form.setError("password", {
+          message: response.error,
+        });
+      }
+
+      if (response?.success_message) {
+        // setSuccess(true);
+        toast({
+          title: "Sign in successfull",
+          description: response.success_message,
+        });
+
+        router.push("/dashboard");
+      }
+    } catch (error) {
+      console.error("Sign in failed: ", error);
+      setLoading(false);
+    } finally {
+      setLoading(false);
+    }
   }
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-10">
         <div className="space-y-5">
-          <FormField
+          <CustomFormField
             control={form.control}
             name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input placeholder="smit@gmail.com" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+            placeholder="smit@gmail.com"
+            label="Email"
           />
-          <FormField
+
+          <PasswordField
             control={form.control}
+            label="Password"
             name="password"
-            render={({ field }) => (
-              <FormItem>
-                <div className="flex justify-between items-center">
-                  <FormLabel>Password</FormLabel>
-                  <Link href={"/forgot-password"} className="text-sm underline">
-                    Forgot password?
-                  </Link>
-                </div>
-                <FormControl>
-                  <Input placeholder="Enter your password" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+            placeholder="Enter your password"
+            togglePasswordVisibility={visible}
+            setTogglePasswordVisibility={setVisible}
           />
         </div>
 
-        <Button className="w-full py-2 h-auto">Sign in</Button>
+        <Button className="w-full py-2 h-auto" disabled={loading}>
+          {loading && (
+            <div className="[&_svg]:animate-spin">
+              <IconLoader2 />
+            </div>
+          )}
+          Sign in
+        </Button>
       </form>
     </Form>
   );
